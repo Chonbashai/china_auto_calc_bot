@@ -7,6 +7,8 @@ services:
       - .env
     ports:
       - "3000:3000"
+    networks:
+      - n8n-stack_default
     healthcheck:
       test:
         [
@@ -19,3 +21,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+# Подключение к той же сети, что и PostgreSQL (n8n-stack).
+# Если сеть или имя postgres-контейнера другие — проверьте на сервере:
+#   docker network ls
+#   docker network inspect <имя_сети>
+#   docker ps --format "{{.Names}}" | grep postgres
+networks:
+  n8n-stack_default:
+    external: true

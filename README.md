@@ -139,7 +139,7 @@ nano .env
 
 ```env
 BOT_TOKEN=7123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-DATABASE_URL=postgresql://postgres:ВАШ_ПАРОЛЬ@172.17.0.1:5432/china_auto_bot
+DATABASE_URL=postgresql://root:123Qwe321@n8n-stack-postgres-1:5432/china_auto_bot
 WEBHOOK_URL=https://chinaauto.ваш-сайт.ru/telegram/webhook
 ADMIN_IDS=123456789
 PORT=3000
@@ -161,20 +161,30 @@ NODE_ENV=production
 
 Формат:
 ```
-postgresql://ЛОГИН:ПАРОЛЬ@АДРЕС:5432/china_auto_bot
+postgresql://ЛОГИН:ПАРОЛЬ@ХОСТ:5432/china_auto_bot
 ```
 
-**Чаще всего на Beget с Docker подойдёт:**
+**Рекомендуется (бот и PostgreSQL в одной Docker-сети):**
 ```
-postgresql://postgres:ваш_пароль@172.17.0.1:5432/china_auto_bot
+postgresql://root:123Qwe321@n8n-stack-postgres-1:5432/china_auto_bot
 ```
 
-- `postgres` — логин PostgreSQL (уточните у того, кто настраивал сервер)
-- `ваш_пароль` — пароль от PostgreSQL
-- `172.17.0.1` — адрес хоста изнутри Docker (стандартный для Linux)
+- `root` — логин PostgreSQL (уточните у того, кто настраивал сервер)
+- `123Qwe321` — пароль от PostgreSQL
+- `n8n-stack-postgres-1` — **имя postgres-контейнера** внутри Docker-сети (не IP)
 - `china_auto_bot` — имя базы из Шага 3
 
-> Если бот не подключается к базе — попробуйте вместо `172.17.0.1` имя контейнера: `everest-db`
+Контейнер бота подключается к БД в общей Docker-сети (`n8n-stack_default`). Это устраняет ошибку `ETIMEDOUT` при старте.
+
+> Если имя postgres-контейнера или сеть другие — проверьте на сервере:
+> ```bash
+> docker network ls
+> docker network inspect n8n-stack_default
+> docker ps --format "{{.Names}}" | grep postgres
+> ```
+> Подставьте актуальное имя контейнера в `DATABASE_URL` и при необходимости обновите сеть в `docker-compose.yml`.
+
+> Запасной вариант (если имя контейнера неизвестно): `172.17.0.1` или `everest-db` — но в production лучше использовать имя контейнера в общей сети.
 
 ### 5.3. Сохраните файл
 
@@ -310,7 +320,13 @@ docker compose up -d --build
 
 1. Проверьте, что база `china_auto_bot` создана (Шаг 3).
 2. Проверьте логин и пароль в `DATABASE_URL`.
-3. Попробуйте заменить `172.17.0.1` на `everest-db` (имя вашего PostgreSQL-контейнера).
+3. Убедитесь, что бот в той же Docker-сети, что и PostgreSQL:
+   ```bash
+   docker network inspect n8n-stack_default
+   ```
+   В списке контейнеров должны быть и `china-auto-bot`, и postgres-контейнер.
+4. В `DATABASE_URL` используйте **имя postgres-контейнера** (например `n8n-stack-postgres-1`), а не внешний IP.
+5. Если сеть или имя контейнера другие — обновите `docker-compose.yml` и `.env` по результатам `docker network ls` и `docker ps`.
 
 ### Не получается курс ВТБ или таможня Calcus
 
