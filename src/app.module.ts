@@ -7,6 +7,8 @@ import { PlaywrightModule } from './common/playwright.module';
 import { YuanRate } from './entities/yuan-rate.entity';
 import { CalculationHistory } from './entities/calculation-history.entity';
 import { TelegramModule } from './telegram/telegram.module';
+import { HealthController } from './telegram/health.controller';
+import { TelegramController } from './telegram/telegram.controller';
 import { CurrencyModule } from './currency/currency.module';
 import { CustomsModule } from './customs/customs.module';
 import { CalculationsModule } from './calculations/calculations.module';
@@ -42,5 +44,6 @@ import { AdminModule } from './admin/admin.module';
     AdminModule,
     TelegramModule,
   ],
+  controllers: [HealthController, TelegramController],
 })
 export class AppModule {}

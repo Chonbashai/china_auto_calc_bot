@@ -318,7 +318,13 @@ docker compose up -d --build
 
 ### Бот не отвечает в Telegram (/start, кнопки, калькулятор)
 
-1. Проверьте логи — должны появляться строки `Webhook update ...` и `Command /start` / `Calculate button`:
+1. Проверьте webhook — **POST** `/telegram/webhook` должен возвращать **200 OK** (GET на этот путь — 404, это нормально):
+   ```bash
+   curl -vk -X POST https://ваш-домен.ru/telegram/webhook \
+     -d '{"test":1}' -H "Content-Type: application/json"
+   ```
+   POST `/telegram/webhook` всегда возвращает 200 и принимает апдейты от Telegram (маршрут `@Controller('telegram')` + `@Post('webhook')` в AppModule).
+2. Проверьте логи — должны появляться строки `POST /telegram/webhook` и `Command /start` / `Calculate button`:
    ```bash
    docker compose logs -f china-auto-bot
    ```

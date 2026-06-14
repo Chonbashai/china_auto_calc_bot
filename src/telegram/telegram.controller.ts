@@ -11,13 +11,20 @@ export class TelegramController {
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Req() req: Request, @Res() res: Response): Promise<void> {
-    this.logger.log(`POST ${req.method} ${req.originalUrl ?? req.url}`);
+    this.logger.log(`POST ${req.originalUrl ?? req.url}`);
 
-    const bot = this.telegramService.getBot();
-    await bot.webhookCallback('/telegram/webhook')(req, res, () => {
-      if (!res.writableEnded) {
-        res.status(200).send('OK');
-      }
-    });
+    // Telegraf webhook filter compares req.url with the hook path exactly.
+    const previousUrl = req.url;
+    req.url = '/telegram/webhook';
+
+    try {
+      await this.telegramService.getBot().webhookCallback('/telegram/webhook')(req, res, () => {
+        if (!res.writableEnded) {
+          res.status(200).send('OK');
+        }
+      });
+    } finally {
+      req.url = previousUrl;
+    }
   }
 }
