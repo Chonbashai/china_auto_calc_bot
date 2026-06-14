@@ -56,24 +56,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async handleUpdate(update: Update, response?: Response): Promise<void> {
+  getBot(): Telegraf<BotContext> {
     if (!this.bot) {
       throw new Error('Telegram bot is not initialized');
     }
-
-    await this.bot.handleUpdate(update, response);
+    return this.bot;
   }
 
-  async handleWebhook(req: Request, res: Response): Promise<void> {
+  async handleUpdate(update: Update, response?: Response): Promise<void> {
+    await this.getBot().handleUpdate(update, response);
+  }
+
+  getWebhookCallback(): (req: Request, res: Response, next: () => void) => Promise<void> {
     if (!this.webhookMiddleware) {
       throw new Error('Telegram webhook middleware is not initialized');
     }
-
-    await this.webhookMiddleware(req, res, () => {
-      if (!res.writableEnded) {
-        res.status(200).send('OK');
-      }
-    });
+    return this.webhookMiddleware;
   }
 
   private validateConfig(): void {

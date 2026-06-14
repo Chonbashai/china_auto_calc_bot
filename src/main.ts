@@ -36,6 +36,7 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(port, '0.0.0.0');
   logger.log(`Application started on port ${port}`);
+  logger.log(`Routes: GET /health, POST /telegram/webhook`);
   logger.log(`Environment: ${config.nodeEnv === 'production' ? 'production' : 'development'}`);
 }
 
