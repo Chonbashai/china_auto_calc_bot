@@ -112,3 +112,18 @@ export function parseAmountFromText(text: string): number | null {
 
   return value;
 }
+
+/** Парсит суммы из ответа Calcus: "531 062,09" */
+export function parseCalcusMoney(value: string | number): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  const normalized = value
+    .replace(/\u00a0/g, ' ')
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\s/g, '')
+    .replace(',', '.');
+
+  return Number.parseFloat(normalized);
+}

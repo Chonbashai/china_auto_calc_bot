@@ -14,6 +14,14 @@ function parseAdminIds(raw: string | undefined): number[] {
     .filter((id) => Number.isFinite(id));
 }
 
+function extractDomainFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'localhost';
+  }
+}
+
 export default registerAs(
   'app',
   (): AppConfig => ({
@@ -24,6 +32,9 @@ export default registerAs(
     webhookUrl: process.env.WEBHOOK_URL ?? '',
     adminIds: parseAdminIds(process.env.ADMIN_IDS),
     calcusApiKey: process.env.CALCUS_API_KEY ?? '',
+    calcusWidgetDomain:
+      process.env.CALCUS_WIDGET_DOMAIN?.trim() ||
+      extractDomainFromUrl(process.env.WEBHOOK_URL ?? ''),
     defaultBankCommissionRate: Number.parseFloat(
       process.env.DEFAULT_BANK_COMMISSION ?? '0.025',
     ),

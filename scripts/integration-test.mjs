@@ -69,7 +69,53 @@ function mapYearToAgeGroup(year) {
   return 'более 7 лет';
 }
 
-async function testCalcusCustoms() {
+async function testCalcusWidget() {
+  const domain = process.env.CALCUS_WIDGET_DOMAIN ?? 'tgbotauto.chonbai.ru';
+  const widgetRes = await fetch(
+    `https://calcus.ru/get-widget?calc=Customs&domain=${encodeURIComponent(domain)}`,
+    { headers: { Referer: 'https://calcus.ru/widget/Customs' } },
+  );
+  if (!widgetRes.ok) throw new Error(`get-widget HTTP ${widgetRes.status}`);
+  const widget = await widgetRes.json();
+  const actionMatch = widget.html.match(/action="([^"]+)"/);
+  if (!actionMatch) throw new Error('widget form action not found');
+  const action = new URL(actionMatch[1], 'https://calcus.ru').href;
+  const body = new URLSearchParams({
+    owner: '1',
+    age: mapYearToAgeCode(2022),
+    engine: '1',
+    power: '90',
+    power_unit: '2',
+    value: '1800',
+    price: '82000',
+    curr: 'CNY',
+  });
+  const calcRes = await fetch(action, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      Referer: 'https://calcus.ru/rastamozhka-auto',
+      Origin: 'https://calcus.ru',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: body.toString(),
+  });
+  if (!calcRes.ok) throw new Error(`calculate HTTP ${calcRes.status}`);
+  const data = await calcRes.json();
+  const total = Number.parseFloat(String(data.total).replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(total) || total <= 0) throw new Error('invalid widget total');
+  console.log(`Calcus widget integration test passed: customs=${Math.round(total)}`);
+}
+
+function mapYearToAgeCode(year) {
+  const ageMonths = (new Date().getFullYear() - year) * 12;
+  if (ageMonths < 36) return '0-3';
+  if (ageMonths < 60) return '3-5';
+  if (ageMonths < 84) return '5-7';
+  return '7-0';
+}
+
+async function testCalcusCustomsPlaywright() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
@@ -125,7 +171,7 @@ async function testCalcusCustoms() {
 
 async function main() {
   await testVtbRate();
-  await testCalcusCustoms();
+  await testCalcusWidget();
 }
 
 main().catch((error) => {

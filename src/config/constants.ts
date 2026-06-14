@@ -12,7 +12,7 @@ export interface CustomsCalculationResult {
   utilStatusLabel: string;
   ageLabel: string;
   calcusAgeLabel: string;
-  source: 'calcus-api' | 'calcus-scrape' | 'manual';
+  source: 'calcus-widget' | 'calcus-api' | 'calcus-scrape' | 'manual';
 }
 
 export interface AppConfig {
@@ -23,6 +23,7 @@ export interface AppConfig {
   webhookUrl: string;
   adminIds: number[];
   calcusApiKey: string;
+  calcusWidgetDomain: string;
   defaultBankCommissionRate: number;
   cbrFallbackEnabled: boolean;
 }

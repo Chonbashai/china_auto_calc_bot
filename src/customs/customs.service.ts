@@ -15,6 +15,7 @@ import { ManualInputRequiredError } from '../common/errors';
 import { PlaywrightService } from '../common/playwright.service';
 import { parseAmountFromText, withRetry } from '../utils/helpers';
 import { buildVehicleAgeInfo } from '../utils/vehicle-age';
+import { CalcusWidgetClient } from './calcus-widget.client';
 
 interface CalcusApiResponse {
   sbor?: number;
@@ -40,6 +41,7 @@ export class CustomsService {
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly calcusWidgetClient: CalcusWidgetClient,
     private readonly playwrightService: PlaywrightService,
   ) {}
 
@@ -58,14 +60,29 @@ export class CustomsService {
     const ageInfo = buildVehicleAgeInfo(dto.month, dto.year, dto.kw, dto.engineVolume);
 
     if (manualCustoms !== undefined) {
-      return {
-        total: Math.round(manualCustoms),
-        isPreferentialUtil: ageInfo.isPreferentialUtil,
-        utilStatusLabel: ageInfo.utilStatusLabel,
-        ageLabel: ageInfo.ageLabel,
-        calcusAgeLabel: ageInfo.calcusAgeLabel,
-        source: 'manual',
-      };
+      return this.buildResult(manualCustoms, ageInfo, 'manual');
+    }
+
+    try {
+      const total = await withRetry(
+        () =>
+          this.calcusWidgetClient.calculate({
+            age: ageInfo.calcusAgeCode,
+            engineVolume: dto.engineVolume,
+            kw: dto.kw,
+            costYuan: dto.costYuan,
+          }),
+        RETRY_ATTEMPTS,
+        RETRY_BASE_DELAY_MS,
+        (error, attempt) => {
+          this.logger.warn(`Calcus widget attempt ${attempt} failed: ${String(error)}`);
+        },
+      );
+
+      this.logger.log(`Calcus widget customs calculated: ${total}`);
+      return this.buildResult(total, ageInfo, 'calcus-widget');
+    } catch (widgetError) {
+      this.logger.error(`Calcus widget failed: ${String(widgetError)}`);
     }
 
     if (this.appConfig.calcusApiKey) {
@@ -80,16 +97,9 @@ export class CustomsService {
         );
 
         this.logger.log(`Calcus API customs calculated: ${total}`);
-        return {
-          total,
-          isPreferentialUtil: ageInfo.isPreferentialUtil,
-          utilStatusLabel: ageInfo.utilStatusLabel,
-          ageLabel: ageInfo.ageLabel,
-          calcusAgeLabel: ageInfo.calcusAgeLabel,
-          source: 'calcus-api',
-        };
+        return this.buildResult(total, ageInfo, 'calcus-api');
       } catch (error) {
-        this.logger.error(`Calcus API failed, falling back to scrape: ${String(error)}`);
+        this.logger.error(`Calcus API failed: ${String(error)}`);
       }
     }
 
@@ -104,14 +114,7 @@ export class CustomsService {
       );
 
       this.logger.log(`Calcus customs scraped: ${total}`);
-      return {
-        total,
-        isPreferentialUtil: ageInfo.isPreferentialUtil,
-        utilStatusLabel: ageInfo.utilStatusLabel,
-        ageLabel: ageInfo.ageLabel,
-        calcusAgeLabel: ageInfo.calcusAgeLabel,
-        source: 'calcus-scrape',
-      };
+      return this.buildResult(total, ageInfo, 'calcus-scrape');
     } catch (error) {
       this.logger.error(`Calcus customs calculation failed: ${String(error)}`);
       throw new ManualInputRequiredError(
@@ -119,6 +122,21 @@ export class CustomsService {
         'customs',
       );
     }
+  }
+
+  private buildResult(
+    total: number,
+    ageInfo: ReturnType<typeof buildVehicleAgeInfo>,
+    source: CustomsCalculationResult['source'],
+  ): CustomsCalculationResult {
+    return {
+      total: Math.round(total),
+      isPreferentialUtil: ageInfo.isPreferentialUtil,
+      utilStatusLabel: ageInfo.utilStatusLabel,
+      ageLabel: ageInfo.ageLabel,
+      calcusAgeLabel: ageInfo.calcusAgeLabel,
+      source,
+    };
   }
 
   private async fetchViaCalcusApi(

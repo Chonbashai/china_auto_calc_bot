@@ -74,11 +74,13 @@ export class CalculationsService {
       invoice,
       customs: customsResult.total,
       customsSourceLabel:
-        customsResult.source === 'calcus-api'
-          ? 'Calcus API'
-          : customsResult.source === 'calcus-scrape'
-            ? 'Calcus (сайт)'
-            : 'вручную',
+        customsResult.source === 'calcus-widget'
+          ? 'Calcus (виджет)'
+          : customsResult.source === 'calcus-api'
+            ? 'Calcus API'
+            : customsResult.source === 'calcus-scrape'
+              ? 'Calcus (сайт)'
+              : 'вручную',
       commission: FIXED_COSTS.commission,
       broker: FIXED_COSTS.broker,
       lab: FIXED_COSTS.lab,
