@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppConfigModule } from './config/config.module';
-import { AppConfigService } from './config/app-config.service';
+import { AppConfig } from './config/constants';
 import { PlaywrightModule } from './common/playwright.module';
 import { YuanRate } from './entities/yuan-rate.entity';
 import { CalculationHistory } from './entities/calculation-history.entity';
@@ -17,16 +18,22 @@ import { AdminModule } from './admin/admin.module';
     AppConfigModule,
     PlaywrightModule,
     TypeOrmModule.forRootAsync({
-      imports: [AppConfigModule],
-      inject: [AppConfigService],
-      useFactory: (config: AppConfigService) => ({
-        type: 'postgres',
-        url: config.databaseUrl,
-        entities: [YuanRate, CalculationHistory],
-        synchronize: true,
-        logging: false,
-        ssl: config.isProduction ? { rejectUnauthorized: false } : false,
-      }),
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const config = configService.get<AppConfig>('app');
+        if (!config) {
+          throw new Error('Application configuration is not loaded');
+        }
+        return {
+          type: 'postgres',
+          url: config.databaseUrl,
+          entities: [YuanRate, CalculationHistory],
+          synchronize: true,
+          logging: false,
+          ssl: config.nodeEnv === 'production' ? { rejectUnauthorized: false } : false,
+        };
+      },
     }),
     CurrencyModule,
     CustomsModule,

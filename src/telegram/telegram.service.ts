@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Telegraf, session, Scenes, Markup } from 'telegraf';
 import { Update } from 'telegraf/types';
-import { AppConfigService } from '../config/app-config.service';
+import { AppConfig } from '../config/constants';
 import { CalculationsService } from '../calculations/calculations.service';
 import { CalculationInputDto } from '../calculations/calculation.dto';
 import { HistoryService } from '../history/history.service';
@@ -26,11 +27,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private readonly pendingCalculations = new Map<number, PendingCalculation>();
 
   constructor(
-    private readonly appConfig: AppConfigService,
+    private readonly configService: ConfigService,
     private readonly calculationsService: CalculationsService,
     private readonly historyService: HistoryService,
     private readonly adminService: AdminService,
   ) {}
+
+  private get appConfig(): AppConfig {
+    const config = this.configService.get<AppConfig>('app');
+    if (!config) {
+      throw new Error('Application configuration is not loaded');
+    }
+    return config;
+  }
 
   async onModuleInit(): Promise<void> {
     this.validateConfig();
@@ -122,7 +131,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      if (!this.appConfig.isAdmin(ctx.from.id)) {
+      if (!this.appConfig.adminIds.includes(ctx.from.id)) {
         await ctx.reply('Команда доступна только администраторам.');
         return;
       }

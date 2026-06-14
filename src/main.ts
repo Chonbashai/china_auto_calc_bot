@@ -1,7 +1,8 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { AppConfigService } from './config/app-config.service';
+import { AppConfig } from './config/constants';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
@@ -24,17 +25,21 @@ async function bootstrap(): Promise<void> {
 
   app.enableShutdownHooks();
 
-  const config = app.get(AppConfigService);
+  const configService = app.get(ConfigService);
+  const config = configService.get<AppConfig>('app');
+  if (!config) {
+    throw new Error('Application configuration is not loaded');
+  }
   validateRequiredConfig(config);
 
   const port = config.port;
 
   await app.listen(port, '0.0.0.0');
   logger.log(`Application started on port ${port}`);
-  logger.log(`Environment: ${config.isProduction ? 'production' : 'development'}`);
+  logger.log(`Environment: ${config.nodeEnv === 'production' ? 'production' : 'development'}`);
 }
 
-function validateRequiredConfig(config: AppConfigService): void {
+function validateRequiredConfig(config: AppConfig): void {
   if (!config.botToken) {
     throw new Error('BOT_TOKEN is required');
   }
