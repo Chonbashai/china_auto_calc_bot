@@ -326,7 +326,7 @@ curl -s https://tgbotauto.chonbai.ru/health
 
 Правильный ответ от **china-auto-bot**:
 ```json
-{"status":"ok","service":"china-auto-bot","routes":["GET /health","POST /telegram/webhook"],"timestamp":"..."}
+{"status":"ok","service":"china-auto-bot"}
 ```
 
 Если вместо этого видите `{"error":{"code":404,"message":"Not Found - /health"}}` — NPM попадает **не в бот**, а в другой сервис на порту 3000. Исправление в NPM (контейнер NPM в Docker):

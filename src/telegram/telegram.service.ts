@@ -24,9 +24,6 @@ import {
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramService.name);
   private bot: Telegraf<BotContext> | null = null;
-  private webhookMiddleware:
-    | ((req: Request, res: Response, next: () => void) => Promise<void>)
-    | null = null;
   private readonly pendingCalculations = new Map<number, PendingCalculation>();
 
   constructor(
@@ -67,27 +64,23 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     await this.getBot().handleUpdate(update, response);
   }
 
-  getWebhookCallback(): (req: Request, res: Response, next: () => void) => Promise<void> {
-    if (!this.webhookMiddleware) {
-      throw new Error('Telegram webhook middleware is not initialized');
-    }
-    return this.webhookMiddleware;
-  }
-
   async processWebhookRequest(req: Request, res: Response): Promise<void> {
-    this.logger.log(`Webhook POST ${req.originalUrl ?? req.url}`);
-
-    const previousUrl = req.url;
-    req.url = '/telegram/webhook';
+    this.logger.log(`POST /telegram/webhook`);
 
     try {
-      await this.getWebhookCallback()(req, res, () => {
-        if (!res.writableEnded) {
-          res.status(200).send('OK');
-        }
-      });
-    } finally {
-      req.url = previousUrl;
+      const update = req.body as Update | undefined;
+
+      if (update && typeof update === 'object' && 'update_id' in update) {
+        await this.getBot().handleUpdate(update, res);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Webhook processing failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+      );
+    }
+
+    if (!res.writableEnded) {
+      res.status(200).send('OK');
     }
   }
 
@@ -201,7 +194,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       }
     });
 
-    this.webhookMiddleware = bot.webhookCallback('/telegram/webhook');
     return bot;
   }
 
