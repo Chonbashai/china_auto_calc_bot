@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+API.txt
+*.log
+.DS_Store
+coverage/
+.playwright/
+test-results/
+scripts/vtb-page.html
