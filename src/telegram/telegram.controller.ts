@@ -1,4 +1,4 @@
-import { Controller, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Post, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { TelegramService } from './telegram.service';
 
@@ -7,8 +7,16 @@ export class TelegramController {
   constructor(private readonly telegramService: TelegramService) {}
 
   @Post('webhook')
-  @HttpCode(200)
-  async webhook(@Req() req: Request, @Res() res: Response): Promise<void> {
-    await this.telegramService.processWebhookRequest(req, res);
+  async webhook(
+    @Req() req: Request,
+    @Body() body: unknown,
+    @Res() res: Response,
+  ): Promise<void> {
+    console.error(
+      `[WEBHOOK-CTRL] body=${JSON.stringify(body ?? null)} req.body=${JSON.stringify(req.body ?? null)}`,
+    );
+
+    const payload = body ?? req.body;
+    await this.telegramService.processWebhookRequest(payload, res);
   }
 }

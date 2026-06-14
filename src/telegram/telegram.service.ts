@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { Telegraf, session, Scenes, Markup } from 'telegraf';
 import { Update } from 'telegraf/types';
 import { AppConfig } from '../config/constants';
@@ -42,9 +42,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    console.error('[TelegramService] initializing bot...');
     this.validateConfig();
     this.bot = this.createBot();
     await this.registerWebhook();
+    console.error('[TelegramService] bot ready');
   }
 
   onModuleDestroy(): void {
@@ -64,29 +66,45 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     await this.getBot().handleUpdate(update, response);
   }
 
-  async processWebhookRequest(req: Request, res: Response): Promise<void> {
+  async processWebhookRequest(body: unknown, res: Response): Promise<void> {
+    console.error(`[WEBHOOK-SVC] processWebhookRequest body=${JSON.stringify(body ?? null)}`);
     this.logger.log('POST /telegram/webhook');
 
-    const update = this.parseWebhookUpdate(req.body);
+    const update = this.parseWebhookUpdate(body);
 
     if (!update) {
-      this.logger.warn(
-        `Webhook body missing or invalid (type=${typeof req.body}, keys=${this.describeBodyKeys(req.body)})`,
-      );
-      res.status(200).send('OK');
+      const detail = `type=${typeof body}, keys=${this.describeBodyKeys(body)}`;
+      console.error(`[WEBHOOK-SVC] invalid body: ${detail}`);
+      this.logger.warn(`Webhook body missing or invalid (${detail})`);
+      res.status(200).type('text/plain').send('noop');
       return;
     }
 
+    console.error(
+      `[WEBHOOK-SVC] update_id=${update.update_id} type=${this.describeUpdate(update)}`,
+    );
     this.logger.log(`Webhook update_id=${update.update_id}, type=${this.describeUpdate(update)}`);
 
+    if (!this.bot) {
+      console.error('[WEBHOOK-SVC] bot is not initialized');
+      this.logger.error('Telegram bot is not initialized');
+      res.status(200).type('text/plain').send('OK');
+      return;
+    }
+
     try {
-      await this.getBot().handleUpdate(update);
-      res.status(200).send('OK');
+      await this.bot.handleUpdate(update);
+      console.error(`[WEBHOOK-SVC] handleUpdate done update_id=${update.update_id}`);
+      res.status(200).type('text/plain').send('OK');
     } catch (error) {
+      console.error(
+        `[WEBHOOK-SVC] handleUpdate error update_id=${update.update_id}:`,
+        error instanceof Error ? error.stack ?? error.message : error,
+      );
       this.logger.error(
         `Webhook processing failed for update_id=${update.update_id}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
       );
-      res.status(200).send('OK');
+      res.status(200).type('text/plain').send('OK');
     }
   }
 
