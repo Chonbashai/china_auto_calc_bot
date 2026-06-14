@@ -318,17 +318,34 @@ docker compose up -d --build
 
 ### Бот не отвечает в Telegram (/start, кнопки, калькулятор)
 
-1. Проверьте webhook — **POST** `/telegram/webhook` должен возвращать **200 OK** (GET на этот путь — 404, это нормально):
-   ```bash
-   curl -vk -X POST https://ваш-домен.ru/telegram/webhook \
-     -d '{"test":1}' -H "Content-Type: application/json"
-   ```
-   POST `/telegram/webhook` всегда возвращает 200 и принимает апдейты от Telegram (маршрут `@Controller('telegram')` + `@Post('webhook')` в AppModule).
-2. Проверьте логи — должны появляться строки `POST /telegram/webhook` и `Command /start` / `Calculate button`:
+**Сначала убедитесь, что NPM проксирует именно на контейнер бота:**
+
+```bash
+curl -s https://tgbotauto.chonbai.ru/health
+```
+
+Правильный ответ от **china-auto-bot**:
+```json
+{"status":"ok","service":"china-auto-bot","routes":["GET /health","POST /telegram/webhook"],"timestamp":"..."}
+```
+
+Если вместо этого видите `{"error":{"code":404,"message":"Not Found - /health"}}` — NPM попадает **не в бот**, а в другой сервис на порту 3000. Исправление в NPM (контейнер NPM в Docker):
+- **Forward Hostname:** `china-auto-bot` (имя контейнера), **не** `127.0.0.1`
+- **Forward Port:** `3000`
+- Убедитесь, что NPM и `china-auto-bot` в одной Docker-сети
+
+Проверка webhook — **POST** `/telegram/webhook` должен возвращать **200 OK**:
+```bash
+curl -vk -X POST https://tgbotauto.chonbai.ru/telegram/webhook \
+  -d '{"test":1}' -H "Content-Type: application/json"
+```
+POST `/telegram/webhook` всегда возвращает 200 и принимает апдейты от Telegram (маршрут `@Controller('telegram')` + `@Post('webhook')`).
+
+1. Проверьте логи — должны появляться строки `Webhook POST /telegram/webhook` и `Command /start` / `Calculate button`:
    ```bash
    docker compose logs -f china-auto-bot
    ```
-2. Если `Webhook update` **нет** — проблема в маршрутизации (NPM, `WEBHOOK_URL`, SSL). URL в `.env` должен совпадать с Proxy Host: `https://ваш-домен.ru/telegram/webhook`.
+2. Если в логах нет `Webhook POST` — проверьте health (должен быть `"service":"china-auto-bot"`) и `WEBHOOK_URL` в `.env`.
 3. Если `Webhook update` **есть**, но ответа нет — смотрите `Telegram error` в логах (токен, доступ к `api.telegram.org`).
 4. Убедитесь, что `WEBHOOK_URL` и путь в `docker-compose`/NPM указывают на `POST /telegram/webhook`.
 5. Перезапустите после обновления:

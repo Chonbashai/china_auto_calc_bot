@@ -74,6 +74,23 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return this.webhookMiddleware;
   }
 
+  async processWebhookRequest(req: Request, res: Response): Promise<void> {
+    this.logger.log(`Webhook POST ${req.originalUrl ?? req.url}`);
+
+    const previousUrl = req.url;
+    req.url = '/telegram/webhook';
+
+    try {
+      await this.getWebhookCallback()(req, res, () => {
+        if (!res.writableEnded) {
+          res.status(200).send('OK');
+        }
+      });
+    } finally {
+      req.url = previousUrl;
+    }
+  }
+
   private validateConfig(): void {
     if (!this.appConfig.botToken) {
       throw new Error('BOT_TOKEN is required');
