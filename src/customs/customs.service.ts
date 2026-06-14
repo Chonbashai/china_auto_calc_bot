@@ -1,10 +1,30 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 import { Page } from 'playwright';
 import { CalculateCustomsDto } from '../calculations/calculation.dto';
-import { CALCUS_CUSTOMS_URL, RETRY_ATTEMPTS, RETRY_BASE_DELAY_MS } from '../config/constants';
+import {
+  AppConfig,
+  CALCUS_API_URL,
+  CALCUS_CUSTOMS_URL,
+  CustomsCalculationResult,
+  RETRY_ATTEMPTS,
+  RETRY_BASE_DELAY_MS,
+} from '../config/constants';
 import { ManualInputRequiredError } from '../common/errors';
 import { PlaywrightService } from '../common/playwright.service';
-import { mapYearToAgeGroup, parseAmountFromText, withRetry } from '../utils/helpers';
+import { parseAmountFromText, withRetry } from '../utils/helpers';
+import { buildVehicleAgeInfo } from '../utils/vehicle-age';
+
+interface CalcusApiResponse {
+  sbor?: number;
+  tax?: number;
+  util?: number;
+  nds?: number;
+  excise?: number;
+  total?: number;
+  total2?: number;
+}
 
 const CUSTOMS_FEE_LABELS = [
   'Таможенный сбор',
@@ -18,25 +38,80 @@ const CUSTOMS_FEE_LABELS = [
 export class CustomsService {
   private readonly logger = new Logger(CustomsService.name);
 
-  constructor(private readonly playwrightService: PlaywrightService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly playwrightService: PlaywrightService,
+  ) {}
 
-  async calculateCustoms(dto: CalculateCustomsDto, manualCustoms?: number): Promise<number> {
+  private get appConfig(): AppConfig {
+    const config = this.configService.get<AppConfig>('app');
+    if (!config) {
+      throw new Error('Application configuration is not loaded');
+    }
+    return config;
+  }
+
+  async calculateCustoms(
+    dto: CalculateCustomsDto,
+    manualCustoms?: number,
+  ): Promise<CustomsCalculationResult> {
+    const ageInfo = buildVehicleAgeInfo(dto.month, dto.year, dto.kw, dto.engineVolume);
+
     if (manualCustoms !== undefined) {
-      return manualCustoms;
+      return {
+        total: Math.round(manualCustoms),
+        isPreferentialUtil: ageInfo.isPreferentialUtil,
+        utilStatusLabel: ageInfo.utilStatusLabel,
+        ageLabel: ageInfo.ageLabel,
+        calcusAgeLabel: ageInfo.calcusAgeLabel,
+        source: 'manual',
+      };
+    }
+
+    if (this.appConfig.calcusApiKey) {
+      try {
+        const total = await withRetry(
+          () => this.fetchViaCalcusApi(dto, ageInfo.calcusAgeCode),
+          RETRY_ATTEMPTS,
+          RETRY_BASE_DELAY_MS,
+          (error, attempt) => {
+            this.logger.warn(`Calcus API attempt ${attempt} failed: ${String(error)}`);
+          },
+        );
+
+        this.logger.log(`Calcus API customs calculated: ${total}`);
+        return {
+          total,
+          isPreferentialUtil: ageInfo.isPreferentialUtil,
+          utilStatusLabel: ageInfo.utilStatusLabel,
+          ageLabel: ageInfo.ageLabel,
+          calcusAgeLabel: ageInfo.calcusAgeLabel,
+          source: 'calcus-api',
+        };
+      } catch (error) {
+        this.logger.error(`Calcus API failed, falling back to scrape: ${String(error)}`);
+      }
     }
 
     try {
-      const customs = await withRetry(
-        () => this.scrapeCustoms(dto),
+      const total = await withRetry(
+        () => this.scrapeCustoms(dto, ageInfo.calcusAgeLabel),
         RETRY_ATTEMPTS,
         RETRY_BASE_DELAY_MS,
         (error, attempt) => {
-          this.logger.warn(`Calcus attempt ${attempt} failed: ${String(error)}`);
+          this.logger.warn(`Calcus scrape attempt ${attempt} failed: ${String(error)}`);
         },
       );
 
-      this.logger.log(`Calcus customs calculated: ${customs}`);
-      return customs;
+      this.logger.log(`Calcus customs scraped: ${total}`);
+      return {
+        total,
+        isPreferentialUtil: ageInfo.isPreferentialUtil,
+        utilStatusLabel: ageInfo.utilStatusLabel,
+        ageLabel: ageInfo.ageLabel,
+        calcusAgeLabel: ageInfo.calcusAgeLabel,
+        source: 'calcus-scrape',
+      };
     } catch (error) {
       this.logger.error(`Calcus customs calculation failed: ${String(error)}`);
       throw new ManualInputRequiredError(
@@ -46,7 +121,47 @@ export class CustomsService {
     }
   }
 
-  private async scrapeCustoms(dto: CalculateCustomsDto): Promise<number> {
+  private async fetchViaCalcusApi(
+    dto: CalculateCustomsDto,
+    ageCode: ReturnType<typeof buildVehicleAgeInfo>['calcusAgeCode'],
+  ): Promise<number> {
+    const payload = {
+      owner: 1,
+      age: ageCode,
+      engine: 1,
+      power: dto.kw,
+      power_unit: 2,
+      value: dto.engineVolume,
+      price: Math.round(dto.costYuan),
+      curr: 'CNY',
+      year: new Date().getFullYear(),
+    };
+
+    const response = await axios.post<CalcusApiResponse>(CALCUS_API_URL, payload, {
+      timeout: 20_000,
+      headers: {
+        'Content-Type': 'application/json',
+        clientkey: this.appConfig.calcusApiKey,
+      },
+      validateStatus: (status) => status >= 200 && status < 500,
+    });
+
+    if (response.status >= 400) {
+      throw new Error(`Calcus API HTTP ${response.status}`);
+    }
+
+    const total = response.data.total2 ?? response.data.total;
+    if (total === undefined || total <= 0) {
+      throw new Error('Calcus API returned empty total');
+    }
+
+    return Math.round(total);
+  }
+
+  private async scrapeCustoms(
+    dto: CalculateCustomsDto,
+    calcusAgeLabel: ReturnType<typeof buildVehicleAgeInfo>['calcusAgeLabel'],
+  ): Promise<number> {
     return this.playwrightService.withPage(async (page) => {
       await page.goto(CALCUS_CUSTOMS_URL, {
         waitUntil: 'domcontentloaded',
@@ -56,7 +171,7 @@ export class CustomsService {
       await this.dismissCookieBanner(page);
 
       await page.locator('select[name="owner"]').selectOption({ index: 0 });
-      await page.locator('select[name="age"]').selectOption({ label: mapYearToAgeGroup(dto.year) });
+      await page.locator('select[name="age"]').selectOption({ label: calcusAgeLabel });
       await page.locator('select[name="engine"]').selectOption({ label: 'Бензиновый' });
       await page.locator('select[name="power_unit"]').selectOption({ label: 'кВт' });
       await page.locator('input[name="value"]').fill(String(dto.engineVolume));
@@ -87,13 +202,33 @@ export class CustomsService {
     const submitButton = page.locator('input.calc-submit[type="submit"]').first();
     if ((await submitButton.count()) > 0) {
       await submitButton.click();
+    } else {
+      await page.getByRole('button', { name: /рассчитать/i }).first().click();
     }
 
-    await page.waitForTimeout(4_000);
+    await page.waitForFunction(
+      () => {
+        const text = document.body.innerText;
+        return (
+          /Полная стоимость растаможки/i.test(text) ||
+          /Утилизационный сбор/i.test(text)
+        );
+      },
+      undefined,
+      { timeout: 30_000 },
+    );
+
+    await page.waitForTimeout(1_000);
   }
 
   private async extractCustomsTotal(page: Page): Promise<number | null> {
     const bodyText = await page.locator('body').innerText();
+
+    const fullTotal = this.extractLabelAmount(bodyText, 'Полная стоимость растаможки');
+    if (fullTotal !== null && fullTotal > 0) {
+      return fullTotal;
+    }
+
     let total = 0;
     let foundAny = false;
 

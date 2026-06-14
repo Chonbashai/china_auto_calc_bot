@@ -17,8 +17,14 @@ export class CalculationHistory {
   @Column({ type: 'varchar', length: 255, nullable: true })
   model!: string | null;
 
+  @Column({ type: 'int', default: 1 })
+  month!: number;
+
   @Column({ type: 'int' })
   year!: number;
+
+  @Column({ name: 'bank_commission_rate', type: 'decimal', precision: 6, scale: 4, default: 0.025 })
+  bankCommissionRate!: number;
 
   @Column({ name: 'engine_volume', type: 'int' })
   engineVolume!: number;

@@ -90,22 +90,12 @@ export function decimalToNumber(value: string | number): number {
   return Number.parseFloat(value);
 }
 
+import { mapYearToAgeGroupFromYearOnly } from './vehicle-age';
+
 export type CalcusAgeGroup = 'до 3 лет' | 'от 3 до 5 лет' | 'от 5 до 7 лет' | 'более 7 лет';
 
 export function mapYearToAgeGroup(year: number): CalcusAgeGroup {
-  const currentYear = new Date().getFullYear();
-  const age = currentYear - year;
-
-  if (age < 3) {
-    return 'до 3 лет';
-  }
-  if (age < 5) {
-    return 'от 3 до 5 лет';
-  }
-  if (age < 7) {
-    return 'от 5 до 7 лет';
-  }
-  return 'более 7 лет';
+  return mapYearToAgeGroupFromYearOnly(year);
 }
 
 export function parseAmountFromText(text: string): number | null {

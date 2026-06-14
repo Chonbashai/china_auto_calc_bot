@@ -183,10 +183,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
       const input: CalculationInputDto = {
         model: state.model,
+        month: state.month!,
         year: state.year!,
         engineVolume: state.engineVolume!,
         kw: state.kw!,
         costYuan: state.costYuan!,
+        bankCommissionRate: state.bankCommissionRate,
       };
 
       await this.runCalculation(ctx, input);

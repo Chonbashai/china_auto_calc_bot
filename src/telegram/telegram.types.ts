@@ -16,6 +16,9 @@ export const BUTTONS = {
   CALCULATE: 'Рассчитать стоимость',
   SKIP_MODEL: 'Пропустить',
   CANCEL: 'Отмена',
+  COMMISSION_2: '2%',
+  COMMISSION_25: '2.5%',
+  COMMISSION_OTHER: 'Другая %',
 } as const;
 
 export interface PendingCalculation {

@@ -22,7 +22,7 @@ export class PlaywrightService implements OnModuleDestroy {
     }
   }
 
-  async fetchVtbYuanRate(): Promise<number> {
+  async fetchVtbYuanSellRate(): Promise<number> {
     return this.withPage(async (page) => {
       const capturedRates: number[] = [];
 
@@ -34,7 +34,7 @@ export class PlaywrightService implements OnModuleDestroy {
 
         try {
           const body = await response.text();
-          const rate = this.extractRateFromJsonText(body);
+          const rate = this.extractSellRateFromJsonText(body);
           if (rate !== null) {
             capturedRates.push(rate);
           }
@@ -58,18 +58,23 @@ export class PlaywrightService implements OnModuleDestroy {
         }
 
         const bodyText = await page.locator('body').innerText();
-        const rate = this.parseRateFromText(bodyText);
+        const rate = this.parseSellRateFromText(bodyText);
 
         if (rate === null) {
-          throw new Error('Unable to parse VTB yuan rate via Playwright');
+          throw new Error('Unable to parse VTB yuan sell rate via Playwright');
         }
 
-        this.logger.log(`VTB yuan rate parsed via Playwright: ${rate}`);
+        this.logger.log(`VTB yuan sell rate parsed via Playwright: ${rate}`);
         return rate;
       } finally {
         page.off('response', onResponse);
       }
     });
+  }
+
+  /** @deprecated Используйте fetchVtbYuanSellRate */
+  async fetchVtbYuanRate(): Promise<number> {
+    return this.fetchVtbYuanSellRate();
   }
 
   private async getBrowser(): Promise<Browser> {
@@ -91,11 +96,11 @@ export class PlaywrightService implements OnModuleDestroy {
     }
   }
 
-  private extractRateFromJsonText(text: string): number | null {
+  private extractSellRateFromJsonText(text: string): number | null {
     const patterns = [
       /"CNY"[^}]*?"sell"[^}]*?(\d{1,2}[.,]\d{2,4})/i,
       /"CNY"[^}]*?"sale"[^}]*?(\d{1,2}[.,]\d{2,4})/i,
-      /"code"\s*:\s*"CNY"[^}]*?"value"\s*:\s*(\d{1,2}[.,]\d{2,4})/i,
+      /"code"\s*:\s*"CNY"[^}]*?"sell"\s*:\s*(\d{1,2}[.,]\d{2,4})/i,
     ];
 
     for (const pattern of patterns) {
@@ -111,19 +116,19 @@ export class PlaywrightService implements OnModuleDestroy {
     return null;
   }
 
-  private parseRateFromText(text: string): number | null {
+  private parseSellRateFromText(text: string): number | null {
     const normalized = text.replace(/\u00a0/g, ' ');
 
-    const labeledMatches = [
-      ...normalized.matchAll(/(?:продаж|покуп|курс)[^\d]{0,40}(\d{1,2}[.,]\d{2,4})/giu),
+    const sellMatches = [
+      ...normalized.matchAll(/(?:продаж|банк\s+прода)[^\d]{0,40}(\d{1,2}[.,]\d{2,4})/giu),
     ];
 
-    const candidates = labeledMatches
+    const sellCandidates = sellMatches
       .map((match) => Number.parseFloat(match[1].replace(',', '.')))
       .filter((value) => this.isValidYuanRate(value));
 
-    if (candidates.length > 0) {
-      return candidates[0];
+    if (sellCandidates.length > 0) {
+      return sellCandidates[0];
     }
 
     const allRates = [...normalized.matchAll(/(\d{1,2}[.,]\d{2,4})/g)]
@@ -134,7 +139,7 @@ export class PlaywrightService implements OnModuleDestroy {
       return null;
     }
 
-    return allRates[0];
+    return Math.max(...allRates);
   }
 
   private isValidYuanRate(value: number): boolean {

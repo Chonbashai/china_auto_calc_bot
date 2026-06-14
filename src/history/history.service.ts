@@ -21,7 +21,9 @@ export class HistoryService {
       telegramUserId: String(telegramUserId),
       username: username ?? null,
       model: result.model,
+      month: result.month,
       year: result.year,
+      bankCommissionRate: result.bankCommissionRate,
       engineVolume: result.engineVolume,
       kw: result.kw,
       costYuan: result.costYuan,
@@ -48,7 +50,9 @@ export class HistoryService {
     }
 
     const lines = records.map((record, index) => {
-      const title = record.model ? `${record.model} ${record.year}` : `Автомобиль ${record.year}`;
+      const title = record.model
+        ? `${record.model} (${String(record.month).padStart(2, '0')}.${record.year})`
+        : `Автомобиль (${String(record.month).padStart(2, '0')}.${record.year})`;
 
       return [
         `${index + 1}. ${title}`,
