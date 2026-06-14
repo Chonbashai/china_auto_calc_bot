@@ -65,23 +65,78 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   async processWebhookRequest(req: Request, res: Response): Promise<void> {
-    this.logger.log(`POST /telegram/webhook`);
+    this.logger.log('POST /telegram/webhook');
+
+    const update = this.parseWebhookUpdate(req.body);
+
+    if (!update) {
+      this.logger.warn(
+        `Webhook body missing or invalid (type=${typeof req.body}, keys=${this.describeBodyKeys(req.body)})`,
+      );
+      res.status(200).send('OK');
+      return;
+    }
+
+    this.logger.log(`Webhook update_id=${update.update_id}, type=${this.describeUpdate(update)}`);
 
     try {
-      const update = req.body as Update | undefined;
-
-      if (update && typeof update === 'object' && 'update_id' in update) {
-        await this.getBot().handleUpdate(update, res);
-      }
+      await this.getBot().handleUpdate(update);
+      res.status(200).send('OK');
     } catch (error) {
       this.logger.error(
-        `Webhook processing failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+        `Webhook processing failed for update_id=${update.update_id}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
       );
-    }
-
-    if (!res.writableEnded) {
       res.status(200).send('OK');
     }
+  }
+
+  private parseWebhookUpdate(body: unknown): Update | undefined {
+    if (body == null) {
+      return undefined;
+    }
+
+    let parsed: unknown = body;
+
+    if (Buffer.isBuffer(parsed)) {
+      try {
+        parsed = JSON.parse(parsed.toString('utf8'));
+      } catch {
+        return undefined;
+      }
+    } else if (typeof parsed === 'string') {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        return undefined;
+      }
+    }
+
+    if (typeof parsed !== 'object' || parsed === null || !('update_id' in parsed)) {
+      return undefined;
+    }
+
+    return parsed as Update;
+  }
+
+  private describeBodyKeys(body: unknown): string {
+    if (body == null || typeof body !== 'object') {
+      return 'none';
+    }
+    return Object.keys(body as Record<string, unknown>).join(',') || 'none';
+  }
+
+  private describeUpdate(update: Update): string {
+    if ('message' in update && update.message) {
+      const text =
+        'text' in update.message && typeof update.message.text === 'string'
+          ? update.message.text
+          : undefined;
+      return text ? `message:${text}` : 'message';
+    }
+    if ('edited_message' in update && update.edited_message) {
+      return 'edited_message';
+    }
+    return 'unknown';
   }
 
   private validateConfig(): void {
@@ -126,6 +181,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Command /start from user ${ctx.from?.id ?? 'unknown'}`);
       await ctx.scene.leave();
       await this.replyWithMainMenu(ctx);
+    });
+
+    bot.command('calc', async (ctx) => {
+      this.logger.log(`Command /calc from user ${ctx.from?.id ?? 'unknown'}`);
+      await ctx.scene.leave();
+      await ctx.scene.enter(CALCULATION_SCENE_ID);
+    });
+
+    bot.command('help', async (ctx) => {
+      await ctx.reply(
+        'Доступные команды:\n' +
+          '/start — главное меню\n' +
+          '/calc — рассчитать стоимость\n' +
+          '/history — история расчётов\n' +
+          '/stats — статистика (только админы)',
+      );
     });
 
     bot.hears(BUTTONS.CALCULATE, async (ctx) => {

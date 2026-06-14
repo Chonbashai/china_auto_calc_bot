@@ -1,10 +1,8 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AppConfig } from './config/constants';
-import { TelegramService } from './telegram/telegram.service';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
@@ -33,29 +31,6 @@ async function bootstrap(): Promise<void> {
     throw new Error('Application configuration is not loaded');
   }
   validateRequiredConfig(config);
-
-  const telegramService = app.get(TelegramService);
-  const httpAdapter = app.getHttpAdapter();
-
-  httpAdapter.get('/health', (_req: Request, res: Response) => {
-    res.status(200).json({
-      status: 'ok',
-      service: 'china-auto-bot',
-    });
-  });
-
-  httpAdapter.post('/telegram/webhook', async (req: Request, res: Response) => {
-    try {
-      await telegramService.processWebhookRequest(req, res);
-    } catch (error) {
-      logger.error(
-        `Webhook route error: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
-      );
-      if (!res.writableEnded) {
-        res.status(200).send('OK');
-      }
-    }
-  });
 
   const port = config.port;
 
