@@ -121,6 +121,14 @@ export function createCalculationScene(
     },
   );
 
+  scene.command('start', async (ctx) => {
+    await ctx.scene.leave();
+    await ctx.reply(
+      '🚗 Калькулятор авто из Китая',
+      Markup.keyboard([[BUTTONS.CALCULATE]]).resize(),
+    );
+  });
+
   scene.command('cancel', async (ctx) => {
     await ctx.reply('Расчет отменен.', Markup.removeKeyboard());
     await ctx.scene.leave();

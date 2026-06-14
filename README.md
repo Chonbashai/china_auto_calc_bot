@@ -316,6 +316,21 @@ docker compose up -d --build
    docker compose restart china-auto-bot
    ```
 
+### Бот не отвечает в Telegram (/start, кнопки, калькулятор)
+
+1. Проверьте логи — должны появляться строки `Webhook update ...` и `Command /start` / `Calculate button`:
+   ```bash
+   docker compose logs -f china-auto-bot
+   ```
+2. Если `Webhook update` **нет** — проблема в маршрутизации (NPM, `WEBHOOK_URL`, SSL). URL в `.env` должен совпадать с Proxy Host: `https://ваш-домен.ru/telegram/webhook`.
+3. Если `Webhook update` **есть**, но ответа нет — смотрите `Telegram error` в логах (токен, доступ к `api.telegram.org`).
+4. Убедитесь, что `WEBHOOK_URL` и путь в `docker-compose`/NPM указывают на `POST /telegram/webhook`.
+5. Перезапустите после обновления:
+   ```bash
+   git pull
+   docker compose up -d --build
+   ```
+
 ### Ошибка подключения к базе данных
 
 1. Проверьте, что база `china_auto_bot` создана (Шаг 3).

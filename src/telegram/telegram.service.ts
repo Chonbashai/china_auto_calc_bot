@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Request, Response } from 'express';
 import { Telegraf, session, Scenes, Markup } from 'telegraf';
 import { Update } from 'telegraf/types';
 import { AppConfig } from '../config/constants';
@@ -12,7 +13,6 @@ import { parsePositiveNumber } from '../utils/helpers';
 import { createCalculationScene } from './scenes/calculation.scene';
 import {
   BotContext,
-  BotSession,
   BUTTONS,
   CALCULATION_SCENE_ID,
   ManualInputField,
@@ -24,6 +24,9 @@ import {
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramService.name);
   private bot: Telegraf<BotContext> | null = null;
+  private webhookMiddleware:
+    | ((req: Request, res: Response, next: () => void) => Promise<void>)
+    | null = null;
   private readonly pendingCalculations = new Map<number, PendingCalculation>();
 
   constructor(
@@ -53,12 +56,24 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async handleUpdate(update: Update): Promise<void> {
+  async handleUpdate(update: Update, response?: Response): Promise<void> {
     if (!this.bot) {
       throw new Error('Telegram bot is not initialized');
     }
 
-    await this.bot.handleUpdate(update);
+    await this.bot.handleUpdate(update, response);
+  }
+
+  async handleWebhook(req: Request, res: Response): Promise<void> {
+    if (!this.webhookMiddleware) {
+      throw new Error('Telegram webhook middleware is not initialized');
+    }
+
+    await this.webhookMiddleware(req, res, () => {
+      if (!res.writableEnded) {
+        res.status(200).send('OK');
+      }
+    });
   }
 
   private validateConfig(): void {
@@ -76,9 +91,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     bot.use(
       session({
-        defaultSession: (): Scenes.WizardSession<BotSession> => ({
-          __scenes: { cursor: 0 },
-        }),
+        defaultSession: () => ({}),
       }),
     );
 
@@ -102,13 +115,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     bot.use(stage.middleware());
 
     bot.start(async (ctx) => {
-      await ctx.reply(
-        '🚗 Калькулятор авто из Китая',
-        Markup.keyboard([[BUTTONS.CALCULATE]]).resize(),
-      );
+      this.logger.log(`Command /start from user ${ctx.from?.id ?? 'unknown'}`);
+      await ctx.scene.leave();
+      await this.replyWithMainMenu(ctx);
     });
 
     bot.hears(BUTTONS.CALCULATE, async (ctx) => {
+      this.logger.log(`Calculate button from user ${ctx.from?.id ?? 'unknown'}`);
+      await ctx.scene.leave();
       await ctx.scene.enter(CALCULATION_SCENE_ID);
     });
 
@@ -158,11 +172,29 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return next();
     });
 
-    bot.catch((error, ctx) => {
-      this.logger.error(`Telegram error for update ${ctx.updateType}: ${String(error)}`);
+    bot.catch(async (error, ctx) => {
+      this.logger.error(
+        `Telegram error for update ${ctx.updateType}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+      );
+
+      try {
+        await ctx.reply('Произошла ошибка. Попробуйте /start или нажмите «Рассчитать стоимость».');
+      } catch (replyError) {
+        this.logger.error(
+          `Failed to send error reply: ${replyError instanceof Error ? replyError.message : String(replyError)}`,
+        );
+      }
     });
 
+    this.webhookMiddleware = bot.webhookCallback('/telegram/webhook');
     return bot;
+  }
+
+  private async replyWithMainMenu(ctx: ReplyContext): Promise<void> {
+    await ctx.reply(
+      '🚗 Калькулятор авто из Китая',
+      Markup.keyboard([[BUTTONS.CALCULATE]]).resize(),
+    );
   }
 
   private async registerWebhook(): Promise<void> {
@@ -187,6 +219,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
       await this.bot.telegram.setWebhook(this.appConfig.webhookUrl, {
         drop_pending_updates: true,
+        allowed_updates: ['message', 'edited_message'],
       });
       this.logger.log(`Webhook registered: ${this.maskWebhookUrl(this.appConfig.webhookUrl)}`);
     } catch (error) {
